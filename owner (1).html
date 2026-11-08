@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fashion Centre Owner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Jost:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f1ede6;--card:#faf8f4;--ink:#26231f;--mut:#847d72;--line:#e2dcd0;--acc:#4f5239;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1916;--card:#25221e;--ink:#efe9de;--mut:#a39b8d;--line:#35312b;--acc:#c5c9a3}}
+:root[data-theme="dark"]{--bg:#1b1916;--card:#25221e;--ink:#efe9de;--mut:#a39b8d;--line:#35312b;--acc:#c5c9a3}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 Jost,system-ui,sans-serif}
+#app{max-width:480px;margin:auto;padding:16px 18px 60px}
+h1,h2,h3{font-family:"Cormorant Garamond",Georgia,serif;font-weight:600}
+h1{font-size:32px;line-height:1.1}h3{font-size:19px}
+.brand{font-family:"Cormorant Garamond",Georgia,serif;font-size:20px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+button,input{font:inherit;color:inherit}button{cursor:pointer;background:none;border:0}
+.top{display:flex;justify-content:space-between;align-items:center;min-height:44px;margin-bottom:12px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.mut{color:var(--mut);font-size:13px}
+.field{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin-top:6px}
+.lbl{font-size:13px;color:var(--mut);margin-top:14px;display:block}
+.btn{display:block;width:100%;padding:15px;border-radius:14px;background:var(--ink);color:var(--bg);font-weight:500;margin-top:16px}
+.link{color:var(--mut);font-size:14px;text-decoration:underline}
+.chip{padding:8px 16px;border:1px solid var(--line);border-radius:99px;font-size:14px;margin-right:8px}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.pill{font-size:12px;padding:3px 10px;border-radius:99px;background:var(--line);white-space:nowrap}
+.pill.ok{background:var(--acc);color:var(--bg)}
+.thumb{width:44px;height:52px;border-radius:10px;border:1px solid var(--line);flex:none}
+.tabs{display:flex;margin:6px 0 4px;overflow-x:auto}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:99px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%}
+#toast.show{opacity:1}
+@media(prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" role="status"></div>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {getFirestore,doc,getDoc,setDoc,updateDoc,collection,getDocs,query,where} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const app=initializeApp({
+  apiKey:"AIzaSyAdPddXkpufKz-FH8TkzTe0A7-t3oxU3mA",
+  authDomain:"fashion-centre-e1eeb.firebaseapp.com",
+  projectId:"fashion-centre-e1eeb",
+  storageBucket:"fashion-centre-e1eeb.firebasestorage.app",
+  messagingSenderId:"235885679183",
+  appId:"1:235885679183:web:24f76a68552cbd648a103a",
+  measurementId:"G-6HBH5JF392"
+});
+const auth=getAuth(app),db=getFirestore(app);
+const $=id=>document.getElementById(id);
+const R=n=>"₹"+Math.round(n).toLocaleString("en-IN");
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const S={user:null,me:undefined,tab:"sup",sup:[],prod:[],costs:{},pct:10,min:50};
+const sp=r=>r+Math.max(Math.round(r*S.pct/100),S.min);
+const nm=id=>{const s=S.sup.find(x=>x.id===id);return s?s.shopName:"Unknown"};
+const stock=p=>Object.values(p.sizes||{}).reduce((a,b)=>a+b,0);
+function toast(t){const e=$("toast");e.textContent=t;e.className="show";clearTimeout(toast.t);toast.t=setTimeout(()=>e.className="",2800)}
+const run=fn=>async(...a)=>{try{await fn(...a)}catch(e){console.error(e);toast((e.code||e.message||"Something went wrong").replace("auth/",""))}};
+
+async function load(){
+  const u=await getDocs(query(collection(db,"users"),where("role","==","supplier")));
+  S.sup=u.docs.map(d=>({id:d.id,...d.data()}));
+  const p=await getDocs(collection(db,"products"));
+  S.prod=p.docs.map(d=>({id:d.id,...d.data()}));
+  const c=await getDocs(collection(db,"productCosts"));
+  S.costs={};c.docs.forEach(d=>S.costs[d.id]=d.data().rate);
+  const g=await getDoc(doc(db,"settings","pricing"));
+  if(g.exists()){S.pct=g.data().percent;S.min=g.data().minimum}
+}
+const head=()=>`<div class="top"><span class="brand">Fashion Centre</span>${S.user?`<button class="link" onclick="A.out()">Log out</button>`:`<span class="mut">Owner</span>`}</div>`;
+const TAB={
+sup:()=>S.sup.length?[...S.sup].sort((a,b)=>(a.status==="pending"?0:1)-(b.status==="pending"?0:1)).map(s=>`<div class="box"><div class="row"><b>${esc(s.shopName)}</b><span class="pill ${s.status==="approved"?"ok":""}">${esc(s.status)}</span></div><div class="mut">${esc(s.phone)}<br>${esc(s.address)}</div><div style="margin-top:10px">${s.status!=="approved"?`<button class="chip on" onclick="A.st('${s.id}','approved')">Approve</button>`:`<button class="chip" onclick="A.st('${s.id}','suspended')">Suspend</button>`}${s.status==="pending"?`<button class="chip" onclick="A.st('${s.id}','rejected')">Reject</button>`:""}</div></div>`).join(""):`<p class="mut" style="margin-top:12px">No suppliers yet.</p>`,
+prod:()=>S.prod.length?S.prod.map(p=>{const r=S.costs[p.id];return`<div class="box"><div class="row"><div class="row" style="justify-content:flex-start"><div class="thumb" style="background:${esc(p.colour)}"></div><div><b>${esc(p.name)}</b><div class="mut">${esc(nm(p.supplierId))}, ${stock(p)} in stock</div></div></div><span class="pill ${p.live?"ok":""}">${p.live?"Live":"Not live"}</span></div>
+<div class="row" style="margin-top:10px"><span>Supplier rate ${r?R(r):"-"}</span><span>Customer price ${p.customerPrice?R(p.customerPrice):"not set"}</span></div>
+<div style="margin-top:10px">${r?`<button class="chip on" onclick="A.price('${p.id}')">${p.live?"Re-price at ":"Go live at "}${R(sp(r))}</button>`:""}${p.live?`<button class="chip" onclick="A.off('${p.id}')">Take offline</button>`:""}</div></div>`}).join(""):`<p class="mut" style="margin-top:12px">No products yet.</p>`,
+price:()=>`<div class="box"><h3>Markup rule</h3><p class="mut">Customer price = supplier rate + the higher of the percentage or the minimum. Suppliers never see this.</p>
+<label class="lbl" for="pc">Percentage</label><input class="field" id="pc" type="number" min="0" value="${S.pct}">
+<label class="lbl" for="pm">Minimum markup (₹)</label><input class="field" id="pm" type="number" min="0" value="${S.min}">
+<p class="mut" style="margin-top:12px">Example: a rate of ₹400 becomes ${R(sp(400))}.</p><button class="btn" onclick="A.save()">Save rule</button></div>
+<p class="mut" style="margin-top:12px">Live products keep their old price until you re-price them in the Products tab.</p>`
+};
+const V={
+login:()=>`${head()}<h1 style="margin-top:24px">Owner login</h1>
+<label class="lbl" for="em">Email</label><input class="field" id="em" type="email" autocomplete="email">
+<label class="lbl" for="pw">Password</label><input class="field" id="pw" type="password" autocomplete="current-password">
+<button class="btn" onclick="A.auth()">Login</button>`,
+no:()=>`${head()}<h1 style="margin-top:24px">Not an owner account</h1><p class="mut" style="margin-top:8px">This page is only for the Fashion Centre owner.</p>`,
+main:()=>`${head()}<h1>Owner</h1><div class="tabs">${[["sup","Suppliers"],["prod","Products"],["price","Pricing"]].map(t=>`<button class="chip ${S.tab===t[0]?"on":""}" onclick="S.tab='${t[0]}';R_()">${t[1]}</button>`).join("")}</div>${TAB[S.tab]()}`
+};
+function R_(){$("app").innerHTML=V[!S.user?"login":S.me&&S.me.role==="owner"?"main":"no"]()}
+const A={
+  auth:run(async()=>{const e=$("em").value.trim(),p=$("pw").value;if(!e||!p)return toast("Enter your email and password");await signInWithEmailAndPassword(auth,e,p)}),
+  out:run(async()=>{await signOut(auth)}),
+  st:run(async(id,s)=>{await updateDoc(doc(db,"users",id),{status:s});await load();R_();toast("Updated")}),
+  price:run(async id=>{const r=S.costs[id];if(!r)return toast("No supplier rate found");await updateDoc(doc(db,"products",id),{customerPrice:sp(r),live:true});await load();R_();toast("Product is live")}),
+  off:run(async id=>{await updateDoc(doc(db,"products",id),{live:false});await load();R_();toast("Product is offline")}),
+  save:run(async()=>{const p=+$("pc").value,m=+$("pm").value;if(!(p>=0)||!(m>=0))return toast("Enter valid numbers");await setDoc(doc(db,"settings","pricing"),{percent:p,minimum:m});S.pct=p;S.min=m;R_();toast("Rule saved")})
+};
+window.A=A;window.S=S;window.R_=R_;
+onAuthStateChanged(auth,run(async u=>{
+  S.user=u;S.me=null;
+  if(u){const g=await getDoc(doc(db,"users",u.uid));S.me=g.exists()?g.data():null;if(S.me&&S.me.role==="owner")await load()}
+  R_();
+}));
+R_();
+</script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fashion Centre Supplier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Jost:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f1ede6;--card:#faf8f4;--ink:#26231f;--mut:#847d72;--line:#e2dcd0;--acc:#4f5239;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1916;--card:#25221e;--ink:#efe9de;--mut:#a39b8d;--line:#35312b;--acc:#c5c9a3}}
+:root[data-theme="dark"]{--bg:#1b1916;--card:#25221e;--ink:#efe9de;--mut:#a39b8d;--line:#35312b;--acc:#c5c9a3}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 Jost,system-ui,sans-serif}
+#app{max-width:480px;margin:auto;padding:16px 18px 60px}
+h1,h2,h3,.serif{font-family:"Cormorant Garamond",Georgia,serif;font-weight:600}
+h1{font-size:32px;line-height:1.1}h2{font-size:24px}h3{font-size:19px}
+.brand{font-family:"Cormorant Garamond",Georgia,serif;font-size:20px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+button,input,select{font:inherit;color:inherit}button{cursor:pointer;background:none;border:0}
+.top{display:flex;justify-content:space-between;align-items:center;min-height:44px;margin-bottom:12px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.mut{color:var(--mut);font-size:13px}
+.field{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin-top:6px}
+.lbl{font-size:13px;color:var(--mut);margin-top:14px;display:block}
+.btn{display:block;width:100%;padding:15px;border-radius:14px;background:var(--ink);color:var(--bg);font-weight:500;margin-top:16px}
+.link{color:var(--mut);font-size:14px;text-decoration:underline}
+.pill{font-size:12px;padding:3px 10px;border-radius:99px;background:var(--line);white-space:nowrap}
+.pill.ok{background:var(--acc);color:var(--bg)}
+.thumb{width:52px;height:62px;border-radius:12px;border:1px solid var(--line);flex:none}
+.sizes{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:8px}
+.sizes label{font-size:12px;color:var(--mut);text-align:center;display:block}
+.sizes input{width:100%;padding:10px 4px;border:1px solid var(--line);border-radius:10px;background:var(--card);text-align:center}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:99px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%}
+#toast.show{opacity:1}
+@media(prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="rc"></div>
+<div id="toast" role="status"></div>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {getFirestore,doc,getDoc,setDoc,updateDoc,collection,query,where,getDocs,writeBatch,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const app=initializeApp({
+  apiKey:"AIzaSyAdPddXkpufKz-FH8TkzTe0A7-t3oxU3mA",
+  authDomain:"fashion-centre-e1eeb.firebaseapp.com",
+  projectId:"fashion-centre-e1eeb",
+  storageBucket:"fashion-centre-e1eeb.firebasestorage.app",
+  messagingSenderId:"235885679183",
+  appId:"1:235885679183:web:24f76a68552cbd648a103a",
+  measurementId:"G-6HBH5JF392"
+});
+const auth=getAuth(app),db=getFirestore(app);
+const $=id=>document.getElementById(id);
+const R=n=>"₹"+Math.round(n).toLocaleString("en-IN");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const KT={top:"Top",outer:"Layer",bottom:"Bottom",shoes:"Shoes",bag:"Bag",acc:"Accessory"};
+const SZ=k=>k==="shoes"?["36","37","38","39","40"]:(k==="bag"||k==="acc")?["One size"]:["XS","S","M","L","XL"];
+const szh=k=>SZ(k).map((s,i)=>`<div><label for="s${i}">${s}</label><input id="s${i}" type="number" inputmode="numeric" min="0" placeholder="0"></div>`).join("");
+const S={v:"login",user:null,profile:null,products:[],costs:{},mode:"in"};
+function toast(t){const e=$("toast");e.textContent=t;e.className="show";clearTimeout(toast.t);toast.t=setTimeout(()=>e.className="",2800)}
+const run=fn=>async(...a)=>{try{await fn(...a)}catch(e){console.error(e);toast((e.code||e.message||"Something went wrong").replace("auth/",""))}};
+
+async function load(){
+  const p=await getDocs(query(collection(db,"products"),where("supplierId","==",S.user.uid)));
+  S.products=p.docs.map(d=>({id:d.id,...d.data()}));
+  const c=await getDocs(query(collection(db,"productCosts"),where("supplierId","==",S.user.uid)));
+  S.costs={};c.docs.forEach(d=>S.costs[d.id]=d.data().rate);
+}
+async function loadProfile(){
+  const s=await getDoc(doc(db,"users",S.user.uid));
+  S.profile=s.exists()?s.data():null;
+  if(S.profile&&S.profile.role==="supplier"&&S.profile.status==="approved")await load();
+}
+const head=()=>`<div class="top"><span class="brand">Fashion Centre</span>${S.user?`<button class="link" onclick="A.out()">Log out</button>`:`<span class="mut">Supplier</span>`}</div>`;
+
+const V={
+login:()=>`${head()}<h1 style="margin-top:24px">${S.mode==="new"?"Create account":"Supplier login"}</h1><p class="mut" style="margin-top:8px">Use your email and a password of at least 6 characters.</p>
+<label class="lbl" for="em">Email</label><input class="field" id="em" type="email" autocomplete="email" placeholder="you@example.com">
+<label class="lbl" for="pw">Password</label><input class="field" id="pw" type="password" autocomplete="${S.mode==="new"?"new-password":"current-password"}">
+<button class="btn" onclick="A.auth()">${S.mode==="new"?"Create account":"Login"}</button>
+<button class="link" style="margin-top:14px" onclick="S.mode='${S.mode==="new"?"in":"new"}';R_()">${S.mode==="new"?"I already have an account":"New supplier? Create an account"}</button>`,
+reg:()=>`${head()}<h1 style="margin-top:24px">Welcome</h1><p class="mut" style="margin-top:8px">Tell us about your shop. Fashion Centre will approve your account.</p>
+<label class="lbl" for="shop">Shop name</label><input class="field" id="shop" maxlength="60" placeholder="Example: Delhi Garments">
+<label class="lbl" for="wa">WhatsApp number</label><div class="row"><span style="padding-top:6px">+91</span><input class="field" id="wa" inputmode="numeric" maxlength="10" placeholder="10 digit number"></div>
+<label class="lbl" for="ad">Shop address</label><input class="field" id="ad" maxlength="200" placeholder="Shop number, market, city">
+<button class="btn" onclick="A.reg()">Request approval</button>`,
+pending:()=>`${head()}<h1 style="margin-top:24px">Waiting for approval</h1><p class="mut" style="margin-top:8px">Thanks, ${esc(S.profile.shopName)}. Fashion Centre will approve your account soon. You can add products after that.</p><button class="btn" onclick="A.check()">Check again</button>`,
+other:()=>`${head()}<h1 style="margin-top:24px">Account not available here</h1><p class="mut" style="margin-top:8px">This page is for approved suppliers. Your account type is ${esc(S.profile.role)}.</p>`,
+home:()=>`${head()}<h1>${esc(S.profile.shopName)}</h1><p class="mut" style="margin-top:6px">Add your products and your own rate. Fashion Centre sets the customer price.</p>
+<div class="box"><h3>Add a product</h3>
+<label class="lbl" for="pn">Name</label><input class="field" id="pn" maxlength="80" placeholder="Example: Navy cotton shirt">
+<label class="lbl" for="pk">Type</label><select class="field" id="pk" onchange="A.typ()">${Object.keys(KT).map(k=>`<option value="${k}">${KT[k]}</option>`).join("")}</select>
+<label class="lbl" for="pc">Colour</label><input class="field" id="pc" type="color" value="#a9bfd3" style="height:48px">
+<label class="lbl" for="pr">Your rate per piece (₹)</label><input class="field" id="pr" type="number" inputmode="numeric" min="1">
+<span class="lbl">Stock for each size</span><div class="sizes" id="sz">${szh("top")}</div>
+<button class="btn" onclick="A.save()">Save product</button></div>
+<h2 style="margin-top:28px">Your products</h2>
+${S.products.length?S.products.map(p=>`<div class="box row"><div class="thumb" style="background:${esc(p.colour)}"></div><div style="flex:1"><b>${esc(p.name)}</b><div class="mut">${KT[p.type]||""}, ${Object.values(p.sizes||{}).reduce((a,b)=>a+b,0)} in stock</div><div>Your rate ${S.costs[p.id]?R(S.costs[p.id]):"-"}</div></div><div style="text-align:right"><span class="pill ${p.live&&!p.paused?"ok":""}">${p.live?(p.paused?"Paused":"Live"):"Waiting for price"}</span><br><button class="link" onclick="A.pause('${p.id}',${!p.paused})">${p.paused?"Resume":"Pause"}</button></div></div>`).join(""):`<p class="mut" style="margin-top:8px">No products yet.</p>`}`
+};
+function R_(){
+  const p=S.profile;let v=S.v;
+  if(S.user)v=!p?"reg":p.role!=="supplier"?"other":p.status!=="approved"?"pending":"home";
+  $("app").innerHTML=V[v]();
+}
+const A={
+  auth:run(async()=>{
+    const e=$("em").value.trim(),p=$("pw").value;
+    if(!e||p.length<6)return toast("Enter your email and a password of 6 or more characters");
+    if(S.mode==="new")await createUserWithEmailAndPassword(auth,e,p);else await signInWithEmailAndPassword(auth,e,p);
+  }),
+  reg:run(async()=>{
+    const n=$("shop").value.trim(),w=$("wa").value.replace(/\D/g,""),a=$("ad").value.trim();
+    if(!n||w.length!==10||!a)return toast("Fill shop name, a 10 digit WhatsApp number and address");
+    await setDoc(doc(db,"users",S.user.uid),{role:"supplier",status:"pending",shopName:n,phone:"+91"+w,address:a,createdAt:serverTimestamp()});
+    await loadProfile();R_();
+  }),
+  check:run(async()=>{await loadProfile();R_()}),
+  typ:()=>{$("sz").innerHTML=szh($("pk").value)},
+  save:run(async()=>{
+    const n=$("pn").value.trim(),k=$("pk").value,c=$("pc").value,r=+$("pr").value;
+    if(!n||!(r>0))return toast("Add a name and your rate");
+    const sizes={};SZ(k).forEach((s,i)=>sizes[s]=Math.max(0,+$("s"+i).value||0));
+    const ref=doc(collection(db,"products")),b=writeBatch(db);
+    b.set(ref,{supplierId:S.user.uid,name:n,type:k,colour:c,sizes,paused:false,live:false,customerPrice:null,createdAt:serverTimestamp()});
+    b.set(doc(db,"productCosts",ref.id),{supplierId:S.user.uid,rate:r});
+    await b.commit();await load();R_();toast("Product saved");
+  }),
+  pause:run(async(id,v)=>{await updateDoc(doc(db,"products",id),{paused:v});await load();R_()}),
+  out:run(async()=>{await signOut(auth)})
+};
+window.A=A;window.S=S;window.R_=R_;
+
+onAuthStateChanged(auth,run(async u=>{
+  S.user=u;
+  if(!u){S.profile=null;S.v="login";R_();return}
+  await loadProfile();R_();
+}));
+R_();
+</script>
+</body>
+</html>
